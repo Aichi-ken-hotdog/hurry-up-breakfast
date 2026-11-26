@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="icon" href="data:," />
+<title>胡闹早餐 · 巷口早餐生存记（Three.js 垂直切片）</title>
+<style>
+  :root {
+    --gold: #ffcf7a;
+    --gold-2: #f0b04a;
+    --ink: #f6e9d2;
+    --muted: #c8b295;
+    --panel: rgba(31, 22, 16, 0.9);
+    --panel-2: rgba(44, 31, 22, 0.92);
+    --line: rgba(255, 208, 130, 0.22);
+    --ok: #7fc47a;
+    --warn: #e8b05a;
+    --bad: #e0604f;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden; background: #191310;
+    font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
+    color: var(--ink); user-select: none; -webkit-font-smoothing: antialiased;
+  }
+  #app { position: fixed; inset: 0; }
+  canvas { display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38);
+    backdrop-filter: blur(6px);
+  }
+
+  #stats {
+    position: absolute; left: 18px; top: 18px; padding: 12px 16px;
+    min-width: 196px; font-size: 14px;
+  }
+  .day-line {
+    display: flex; justify-content: space-between; gap: 12px; margin-bottom: 7px;
+    padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+    font-size: 11px; letter-spacing: 0.08em; color: #a89273;
+  }
+  .day-line #hud-region { color: #e6c896; }
+  .stat-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin: 4px 0; }
+  .stat-row .label { color: var(--muted); font-size: 12px; letter-spacing: 0.08em; }
+  .stat-row .val { font-size: 18px; font-weight: 700; color: var(--gold); font-variant-numeric: tabular-nums; }
+  .stat-row .val.rep { color: #ffb3a0; }
+  #stamina-wrap {
+    margin-top: 8px; height: 8px; border-radius: 5px; overflow: hidden;
+    background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  #stamina-fill {
+    height: 100%; width: 100%; border-radius: 4px;
+    background: linear-gradient(90deg, #6fb7a4, #a8d98c);
+    transition: background 0.25s;
+  }
+  #stamina-fill.low { background: linear-gradient(90deg, #c4553f, #e8a05a); }
+
+  #clock-wrap {
+    position: absolute; left: 50%; top: 12px; transform: translateX(-50%); text-align: center;
+    padding: 8px 22px 9px; border-radius: 14px;
+    background: rgba(28, 20, 14, 0.62); border: 1px solid rgba(255, 208, 130, 0.2);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28); backdrop-filter: blur(6px);
+  }
+  #clock {
+    font-size: 30px; font-weight: 800; letter-spacing: 0.06em; color: var(--ink);
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6); font-variant-numeric: tabular-nums;
+  }
+  #phase { font-size: 12px; letter-spacing: 0.16em; color: var(--muted); margin-top: 2px; }
+
+  #tips {
+    position: absolute; right: 18px; top: 18px; padding: 10px 14px;
+    font-size: 12px; color: var(--muted); line-height: 1.9; text-align: right;
+  }
+  #tips b { color: var(--gold); font-weight: 600; }
+
+  #hint {
+    position: absolute; left: 50%; top: 92px; transform: translateX(-50%);
+    padding: 7px 16px; border-radius: 999px; font-size: 13px;
+    background: rgba(28, 20, 14, 0.72); border: 1px solid rgba(255, 208, 130, 0.16);
+    color: #f2dcb6; white-space: nowrap; opacity: 0; transition: opacity 0.3s;
+    max-width: 92vw; overflow: hidden; text-overflow: ellipsis;
+  }
+  #hint.show { opacity: 1; }
+
+  #orders {
+    position: absolute; left: 18px; top: 152px;
+    display: flex; flex-direction: column; gap: 8px; width: 214px;
+  }
+  .ticket {
+    flex: 0 0 auto; width: 100%; padding: 10px 12px 9px;
+    background: rgba(250, 240, 220, 0.94); color: #3a2717;
+    border-radius: 10px; box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+    border-top: 4px solid #b8463a;
+    animation: pop 0.25s ease-out;
+  }
+  @keyframes pop { from { transform: translateY(-6px); } }
+  .ticket .no { font-size: 10px; letter-spacing: 0.18em; color: #9a7a55; margin-bottom: 4px; }
+  .ticket .lines { display: flex; flex-direction: column; gap: 3px; }
+  .chip { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
+  .chip i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.08); }
+  .chip b { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; color: #7a5330; }
+  .chip.done { opacity: 0.4; text-decoration: line-through; }
+  .pat { margin-top: 7px; height: 5px; border-radius: 4px; background: rgba(58, 39, 23, 0.16); overflow: hidden; }
+  .pat span { display: block; height: 100%; border-radius: 4px; background: var(--ok); transition: width 0.1s linear; }
+
+  #bottom-center {
+    position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 8px; width: min(560px, 92vw);
+  }
+  #hand {
+    padding: 6px 18px; border-radius: 999px; font-size: 13px; font-weight: 600;
+    background: rgba(28, 20, 14, 0.8); border: 1px solid rgba(255, 208, 130, 0.25);
+    color: var(--muted);
+  }
+  #hand.has { color: #1d140d; background: var(--gold); border-color: #ffe1a6; }
+  #prompt {
+    min-height: 22px; font-size: 14px; letter-spacing: 0.02em; color: #ffe9c4;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8); text-align: center;
+  }
+
+  #btn-skip {
+    position: absolute; left: 18px; bottom: 22px; pointer-events: auto;
+    padding: 9px 16px; font-size: 13px;
+  }
+  .hidden { display: none !important; }
+
+  #toasts {
+    position: absolute; right: 18px; bottom: 24px; display: flex;
+    flex-direction: column; gap: 8px; align-items: flex-end; width: 300px;
+  }
+  .toast {
+    padding: 9px 13px; font-size: 13px; border-radius: 9px;
+    background: rgba(30, 21, 15, 0.92); border-left: 3px solid var(--muted);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); animation: slide 0.2s ease-out;
+    max-width: 100%;
+  }
+  .toast.ok { border-left-color: var(--ok); }
+  .toast.warn { border-left-color: var(--warn); }
+  .toast.bad { border-left-color: var(--bad); }
+  .toast.info { border-left-color: #8fa9c9; }
+  @keyframes slide { from { transform: translateX(14px); opacity: 0; } }
+
+  .screen {
+    position: fixed; inset: 0; z-index: 30; display: flex; align-items: center;
+    justify-content: center; padding: 24px;
+    background: radial-gradient(circle at 50% 35%, rgba(60, 38, 24, 0.72), rgba(12, 8, 6, 0.92));
+    backdrop-filter: blur(4px);
+  }
+  .panel {
+    width: min(760px, 94vw); max-height: 92vh; overflow: auto;
+    background: linear-gradient(180deg, rgba(48, 32, 22, 0.97), rgba(30, 20, 14, 0.98));
+    border: 1px solid rgba(255, 208, 130, 0.28); border-radius: 18px;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6); padding: 30px 34px 28px;
+  }
+  .panel h1 { margin: 0; font-size: 46px; letter-spacing: 0.12em; color: var(--gold); }
+  .panel .sub { color: var(--muted); font-size: 13px; letter-spacing: 0.22em; margin: 6px 0 18px; }
+  .panel h2 { margin: 0 0 4px; font-size: 26px; letter-spacing: 0.06em; }
+  .panel p { color: #d8c3a3; font-size: 14px; line-height: 1.85; margin: 0 0 16px; }
+  .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; margin: 18px 0 22px; }
+  .ctrl { display: flex; gap: 10px; align-items: center; font-size: 13px; color: #e7d4b7; }
+  .key {
+    min-width: 34px; text-align: center; padding: 3px 7px; border-radius: 6px;
+    background: rgba(255, 255, 255, 0.09); border: 1px solid rgba(255, 255, 255, 0.16);
+    font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--gold);
+  }
+  .goal { padding: 12px 14px; border-radius: 10px; background: rgba(255, 207, 122, 0.08); border: 1px dashed rgba(255, 207, 122, 0.3); font-size: 13px; color: #ecd7b6; margin-bottom: 18px; line-height: 1.85; }
+  .actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .fine { font-size: 12px; color: #a89273; }
+  .region-label {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+    margin: 2px 0 9px; font-size: 12px; letter-spacing: 0.16em; color: var(--muted);
+  }
+  .region-label span { font-size: 11px; letter-spacing: 0; color: #8f7a5f; }
+  .regions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 18px; }
+  .region-card {
+    pointer-events: auto; cursor: pointer; text-align: left; font-family: inherit;
+    display: flex; flex-direction: column; gap: 5px; padding: 12px 13px;
+    border-radius: 12px; background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 208, 130, 0.18); color: var(--ink);
+    transition: background 0.15s, border-color 0.15s, transform 0.08s;
+  }
+  .region-card:hover { background: rgba(255, 207, 122, 0.09); transform: translateY(-1px); }
+  .region-card.selected {
+    border-color: var(--gold); background: rgba(255, 207, 122, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(255, 207, 122, 0.45);
+  }
+  .region-card .rname { font-size: 15px; font-weight: 700; color: var(--gold); letter-spacing: 0.04em; }
+  .region-card .rtag { font-size: 11px; color: #d8c3a3; line-height: 1.55; }
+  .region-card .rmeta { font-size: 10px; color: #a89273; }
+  .region-card .rmenu {
+    font-size: 10px; color: #8f7a5f; line-height: 1.6;
+    border-top: 1px dashed rgba(255, 255, 255, 0.1); padding-top: 5px; margin-top: 1px;
+  }
+  .save-row {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 12px 14px; margin-bottom: 16px; border-radius: 12px;
+    background: rgba(255, 207, 122, 0.1); border: 1px solid rgba(255, 207, 122, 0.34);
+  }
+  #save-meta { font-size: 12px; color: #d8c3a3; line-height: 1.6; }
+  .settle-save { font-size: 12px; color: #8f7a5f; }
+  .btn {
+    pointer-events: auto; cursor: pointer; border: none; border-radius: 10px;
+    padding: 12px 26px; font-size: 15px; font-weight: 700; font-family: inherit;
+    background: linear-gradient(180deg, #ffd98f, #f0b04a); color: #2a1a0c;
+    box-shadow: 0 6px 18px rgba(240, 176, 74, 0.22);
+    transition: transform 0.08s, filter 0.15s;
+  }
+  .btn:hover { filter: brightness(1.06); transform: translateY(-1px); }
+  .btn:active { transform: translateY(1px); }
+  .btn.ghost {
+    background: transparent; color: #e8d3b2; border: 1px solid rgba(255, 208, 130, 0.35);
+    box-shadow: none;
+  }
+  #btn-skip { border: 1px solid rgba(255, 208, 130, 0.4); background: rgba(35, 24, 17, 0.85); color: var(--gold); border-radius: 10px; cursor: pointer; font-family: inherit; }
+  #btn-skip:hover { background: rgba(60, 40, 26, 0.9); }
+
+  .settle-grid { display: grid; grid-template-columns: 1fr; gap: 0; margin: 14px 0 16px; }
+  .srow { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px dashed rgba(255, 255, 255, 0.1); padding: 6px 0; font-size: 14px; }
+  .srow .k { color: var(--muted); font-size: 13px; }
+  .srow .v { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .srow .v.pos { color: var(--ok); }
+  .srow .v.neg { color: var(--bad); }
+  .verdict { font-size: 14px; color: #f0d9b7; background: rgba(255, 255, 255, 0.05); border-radius: 10px; padding: 12px 14px; margin-bottom: 18px; line-height: 1.8; }
+  .stars { font-size: 22px; color: var(--gold); letter-spacing: 0.2em; }
+
+  .panel-start { width: min(1080px, 95vw); padding: 34px 38px 30px; }
+  .start-grid { display: grid; grid-template-columns: 0.95fr 1.05fr; gap: 38px; align-items: start; }
+  .start-left { padding-top: 6px; }
+  .logo-tag { font-size: 11px; letter-spacing: 0.26em; color: #c9a26a; text-transform: uppercase; }
+  .panel-start h1.logo {
+    margin: 14px 0 8px; font-size: 82px; line-height: 1.02; letter-spacing: 0.045em;
+    font-weight: 900;
+    background: linear-gradient(180deg, #fff4cf 4%, #ffd27c 44%, #f4a83c 76%, #dd7c22 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 5px 0 rgba(96, 31, 18, 0.55)) drop-shadow(0 12px 26px rgba(0, 0, 0, 0.38));
+  }
+  .logo-sub { color: #d8c3a3; font-size: 13px; letter-spacing: 0.14em; margin-bottom: 18px; }
+  .steps { display: flex; gap: 8px; margin: 4px 0 4px; }
+  .step {
+    flex: 1; padding: 9px 10px; border-radius: 10px;
+    background: rgba(255, 255, 255, 0.045); border: 1px solid rgba(255, 208, 130, 0.14);
+  }
+  .step b { display: block; font-size: 10px; letter-spacing: 0.16em; color: #a89273; font-weight: 600; }
+  .step span { display: block; font-size: 13px; font-weight: 700; color: var(--gold); margin-top: 2px; }
+  .step em { display: block; font-style: normal; font-size: 10px; color: #a89273; margin-top: 1px; }
+  .panel-start .regions { grid-template-columns: 1fr; gap: 8px; margin-bottom: 14px; }
+  .panel-start .region-card { padding: 10px 13px; gap: 3px; }
+  .panel-start .region-label { margin-top: 0; }
+  .panel-start .controls { margin: 16px 0 18px; }
+
+  .pane { min-height: 376px; }
+  .pane-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .pane-step { font-size: 11px; letter-spacing: 0.2em; color: #c9a26a; }
+  .mini {
+    pointer-events: auto; cursor: pointer; font-family: inherit; font-size: 12px;
+    padding: 5px 11px; border-radius: 8px; color: #e8d3b2;
+    background: transparent; border: 1px solid rgba(255, 208, 130, 0.3);
+  }
+  .mini:hover { background: rgba(255, 207, 122, 0.1); }
+  .menu-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+  .menu-item {
+    pointer-events: auto; cursor: pointer; text-align: left; font-family: inherit;
+    display: flex; flex-direction: column; gap: 4px; padding: 14px 16px;
+    border-radius: 12px; background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 208, 130, 0.18); color: var(--ink);
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .menu-item b { font-size: 16px; color: var(--gold); letter-spacing: 0.04em; }
+  .menu-item span { font-size: 12px; color: #b8a184; }
+  .menu-item:hover { background: rgba(255, 207, 122, 0.09); border-color: rgba(255, 207, 122, 0.42); }
+  .menu-item.primary { background: rgba(255, 207, 122, 0.12); border-color: rgba(255, 207, 122, 0.52); }
+  .diffs { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+  .diff-card {
+    pointer-events: auto; cursor: pointer; text-align: left; font-family: inherit;
+    display: grid; grid-template-columns: 92px 1fr auto; align-items: center; gap: 4px 12px;
+    padding: 11px 14px; border-radius: 12px; background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 208, 130, 0.18); color: var(--ink);
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .diff-card:hover { background: rgba(255, 207, 122, 0.09); }
+  .diff-card.selected { border-color: var(--gold); background: rgba(255, 207, 122, 0.12); box-shadow: inset 0 0 0 1px rgba(255, 207, 122, 0.45); }
+  .diff-card .dname { font-size: 15px; font-weight: 700; color: var(--gold); }
+  .diff-card .dtag { font-size: 12px; color: #e0c9a6; }
+  .diff-card .ddesc { grid-column: 2 / 4; font-size: 11px; color: #a89273; line-height: 1.6; }
+  .diff-card .dmeta { grid-row: 1; font-size: 10px; color: #8f7a5f; text-align: right; }
+  .save-list { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 12px; }
+  .save-item {
+    display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+    border-radius: 10px; background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .save-item.empty { opacity: 0.55; }
+  .save-item .slot { width: 76px; flex: none; font-size: 11px; letter-spacing: 0.1em; color: #c9a26a; }
+  .save-item .meta { flex: 1; font-size: 12px; color: #d8c3a3; line-height: 1.55; }
+  .save-item .meta em { display: block; font-style: normal; font-size: 11px; color: #8f7a5f; }
+  .save-item .mini { padding: 4px 10px; }
+  #hud-actions { position: absolute; right: 18px; top: 152px; display: flex; gap: 8px; }
+  .hud-btn {
+    pointer-events: auto; cursor: pointer; padding: 7px 15px; font-size: 12px;
+    font-family: inherit; color: var(--gold); background: rgba(35, 24, 17, 0.85);
+    border: 1px solid rgba(255, 208, 130, 0.4); border-radius: 9px;
+  }
+  .hud-btn:hover { background: rgba(60, 40, 26, 0.9); }
+  .panel-save { width: min(620px, 94vw); }
+  #screen-save { z-index: 40; }
+
+  @media (max-width: 860px) {
+    .start-grid { grid-template-columns: 1fr; gap: 22px; }
+    .panel-start h1.logo { font-size: 58px; }
+    .panel-start { padding: 26px 24px; }
+  }
+
+  @media (max-width: 720px) {
+    #tips { display: none; }
+    .panel { padding: 24px 20px; }
+    .panel h1 { font-size: 34px; }
+    .controls { grid-template-columns: 1fr; }
+    .regions { grid-template-columns: 1fr; }
+    .region-label span { display: none; }
+    .settle-grid { grid-template-columns: 1fr; }
+    .ticket { padding: 8px 9px; }
+    #orders { gap: 6px; }
+    #stats { min-width: 150px; padding: 9px 11px; }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="hud">
+  <div id="stats" class="card">
+    <div class="day-line"><span id="hud-region">巷口早餐</span><span id="hud-day">第 1 天</span></div>
+    <div class="stat-row"><span class="label">现金</span><span class="val" id="cash">120 元</span></div>
+    <div class="stat-row"><span class="label">声望</span><span class="val rep" id="rep">50</span></div>
+    <div class="stat-row"><span class="label">体力</span><span class="val" id="stamina-text">100</span></div>
+    <div id="stamina-wrap"><div id="stamina-fill"></div></div>
+  </div>
+
+  <div id="clock-wrap">
+    <div id="clock">6:45</div>
+    <div id="phase">准备开张</div>
+  </div>
+
+  <div id="tips" class="card">
+    <div><b>WASD</b> 移动 · <b>Shift</b> 冲刺</div>
+    <div><b>E</b> 备餐 / 取餐 / 交付 / 丢垃圾</div>
+    <div><b>空格</b> 跳跃 · <b>1–4</b> 跳舞</div>
+    <div id="menu-tips">豆浆 3 元 · 包子 3 元 · 油条 2 元 · 茶叶蛋 2 元</div>
+  </div>
+
+  <div id="hint"></div>
+  <div id="orders"></div>
+
+  <div id="bottom-center">
+    <div id="hand">手上：空手</div>
+    <div id="prompt"></div>
+  </div>
+
+  <button id="btn-skip" class="hidden">跳过备料，直接开门</button>
+  <div id="hud-actions"><button id="btn-save" class="hud-btn hidden">存档</button></div>
+  <div id="toasts"></div>
+</div>
+
+<div id="screen-start" class="screen">
+  <div class="panel panel-start">
+    <div class="start-grid">
+      <div class="start-left">
+        <div class="logo-tag">HUNAO BREAKFAST · THREE.JS 垂直切片</div>
+        <h1 class="logo">胡闹早餐</h1>
+        <div class="logo-sub" id="start-sub">巷口早餐生存记 · v0.4 · 每天 3 分钟</div>
+        <p id="start-desc">六点四十五，卷帘门拉开。四口锅、一个窗口、一条街的困意——都等着你喂饱。</p>
+        <div class="steps">
+          <div class="step"><b>01 备料</b><span>先做一批</span><em>按 E 开锅</em></div>
+          <div class="step"><b>02 接单</b><span>看窗口</span><em>最多 3 单</em></div>
+          <div class="step"><b>03 出餐</b><span>别让人等</span><em>小费看耐心</em></div>
+        </div>
+        <div class="controls">
+          <div class="ctrl"><span class="key">W A S D</span> 移动</div>
+          <div class="ctrl"><span class="key">Shift</span> 冲刺（消耗体力）</div>
+          <div class="ctrl"><span class="key">E</span> 备餐 / 取餐 / 交付</div>
+          <div class="ctrl"><span class="key">E</span> 在垃圾桶旁丢弃</div>
+          <div class="ctrl"><span class="key">Space</span> 跳跃</div>
+          <div class="ctrl"><span class="key">1 2 3 4</span> 跳舞（再按停下）</div>
+        </div>
+        <div class="actions">
+          <span class="fine">v0.4 · 每天 3 分钟 · 自动存档 + 手动存档</span>
+        </div>
+      </div>
+      <div class="start-right">
+        <div class="pane" id="pane-main">
+          <div class="save-row hidden" id="save-row">
+            <button class="btn" id="btn-continue">继续上次营业</button>
+            <span id="save-meta"></span>
+          </div>
+          <div class="menu-list">
+            <button class="menu-item primary" id="btn-new"><b>开始新营业</b><span>先选摊位，再选难度，从头干起</span></button>
+            <button class="menu-item" id="btn-saves"><b>存档管理</b><span>自动存档 + 3 个手动存档：读取或删除</span></button>
+          </div>
+          <div class="goal">
+            每天 3 分钟：30 秒备料、150 秒早高峰。<br />
+            自动存档每天开门写入；营业中随时可以手动存档。
+          </div>
+        </div>
+
+        <div class="pane hidden" id="pane-region">
+          <div class="pane-head"><span class="pane-step">1 / 2 · 摊位</span><button class="mini" id="btn-region-back">返回</button></div>
+          <div class="region-label">今天摆哪个摊？ <span>同一套后厨、四口锅；不同地区，不同菜单</span></div>
+          <div class="regions" id="regions"></div>
+          <div class="actions">
+            <button class="btn" id="btn-region-next">下一步：选难度</button>
+          </div>
+        </div>
+
+        <div class="pane hidden" id="pane-diff">
+          <div class="pane-head"><span class="pane-step">2 / 2 · 难度</span><button class="mini" id="btn-diff-back">上一步</button></div>
+          <div class="region-label"><span id="diff-region">巷口早餐</span> <span>分级难度会改客人数量、耐心和房租</span></div>
+          <div class="diffs" id="diffs"></div>
+          <div class="goal" id="start-goal"></div>
+          <div class="actions">
+            <button class="btn" id="btn-start">开张营业</button>
+            <span class="fine">自动存档 · 游戏内可手动存档</span>
+          </div>
+        </div>
+
+        <div class="pane hidden" id="pane-saves">
+          <div class="pane-head"><span class="pane-step">存档管理</span><button class="mini" id="btn-saves-back">返回</button></div>
+          <div class="save-list" id="save-list"></div>
+          <p class="fine">自动存档在每天开门时覆盖；手动存档可在营业中按「存档」写入。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="screen-settle" class="screen hidden">
+  <div class="panel">
+    <h2 id="settle-title">打烊了</h2>
+    <div class="sub" id="settle-sub">今天就这样过去了</div>
+    <div class="settle-grid" id="settle-grid"></div>
+    <div class="verdict" id="settle-verdict"></div>
+    <div class="stars" id="settle-stars"></div>
+    <div class="actions" style="margin-top:20px">
+      <button class="btn" id="btn-next">进入下一天</button>
+      <button class="btn ghost" id="btn-retry">重开今天</button>
+      <span class="settle-save" id="settle-save">进入下一天时自动存档</span>
+    </div>
+  </div>
+</div>
+
+<div id="screen-save" class="screen hidden">
+  <div class="panel panel-save">
+    <h2>手动存档</h2>
+    <div class="sub" id="save-current">当前进度</div>
+    <div class="save-list" id="save-dialog-list"></div>
+    <div class="actions">
+      <button class="btn ghost" id="btn-save-cancel">继续营业</button>
+      <span class="fine">选择槽位会覆盖其中的旧存档</span>
+    </div>
+  </div>
+</div>
+<div id="screen-over" class="screen hidden">
+  <div class="panel">
+    <h2>撑不住了</h2>
+    <div class="sub">现金见底，房东收回了卷帘门钥匙</div>
+    <div class="verdict" id="over-body"></div>
+    <div class="actions">
+      <button class="btn" id="btn-restart">重新开张</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>
